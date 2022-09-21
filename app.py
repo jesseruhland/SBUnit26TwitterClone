@@ -5,7 +5,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
 from forms import UserAddForm, LoginForm, MessageForm, UserEditForm
-from models import db, connect_db, User, Message
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -177,6 +177,17 @@ def users_followers(user_id):
     user = User.query.get_or_404(user_id)
     return render_template('users/followers.html', user=user)
 
+@app.route('/users/<int:user_id>/likes')
+def show_likes(user_id):
+    """Show list of messages this user likes"""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    return render_template('users/likes.html', user=user)
+
 
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
 def add_follow(follow_id):
@@ -255,6 +266,26 @@ def delete_user():
     db.session.commit()
 
     return redirect("/signup")
+
+@app.route("/users/add_like/<int:msg_id>", methods=['POST'])
+def like_message(msg_id):
+    """Add a users 'like' to a message."""
+
+    new_like = Likes(user_id=g.user.id, message_id=msg_id)
+    db.session.add(new_like)
+    db.session.commit()
+
+    return redirect("/")
+
+@app.route("/users/remove_like/<int:msg_id>", methods=['POST'])
+def remove_liked_message(msg_id):
+    """Remove a users 'like' from a message."""
+
+    like = Likes.query.filter(Likes.user_id == g.user.id, Likes.message_id == msg_id).one_or_none()
+    db.session.delete(like)
+    db.session.commit()
+
+    return redirect("/")
 
 
 ##############################################################################
