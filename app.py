@@ -275,7 +275,7 @@ def like_message(msg_id):
     db.session.add(new_like)
     db.session.commit()
 
-    return redirect("/")
+    return redirect(f"/users/{g.user.id}/likes")
 
 @app.route("/users/remove_like/<int:msg_id>", methods=['POST'])
 def remove_liked_message(msg_id):
@@ -285,7 +285,7 @@ def remove_liked_message(msg_id):
     db.session.delete(like)
     db.session.commit()
 
-    return redirect("/")
+    return redirect(f"/users/{g.user.id}/likes")
 
 
 ##############################################################################
@@ -329,12 +329,17 @@ def messages_destroy(message_id):
     if not g.user:
         flash("Access unauthorized.", "danger")
         return redirect("/")
-
+    
     msg = Message.query.get(message_id)
-    db.session.delete(msg)
-    db.session.commit()
 
-    return redirect(f"/users/{g.user.id}")
+    # only message creator can delete message
+    if msg.user == g.user:
+        db.session.delete(msg)
+        db.session.commit()
+        return redirect(f"/users/{g.user.id}")
+    else:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
 
 
 ##############################################################################
@@ -348,11 +353,11 @@ def homepage():
     - anon users: no messages
     - logged in: 100 most recent messages of followed_users
     """
-    followed_users = [g.user.id]
-    for user in g.user.following:
-        followed_users.append(user.id)
 
     if g.user:
+        followed_users = [g.user.id]
+        for user in g.user.following:
+            followed_users.append(user.id)
         messages = (Message
                     .query
                     .filter(Message.user_id.in_(followed_users))

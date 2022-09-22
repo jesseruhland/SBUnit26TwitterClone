@@ -51,8 +51,27 @@ class MessageViewTestCase(TestCase):
 
         db.session.commit()
 
-    def test_add_message(self):
-        """Can use add a message?"""
+    def test_message_entry_form(self):
+        """Does this route present a form when the user is logged in?"""
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            resp = c.get("/messages/new")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('<form', html)
+
+    def test_message_entry_form_not_logged_in(self):
+        """Does this route redirect if not logged in?"""
+        with self.client as c:
+            resp = c.get('/messages/new')
+
+            self.assertEqual(resp.status_code, 302)
+
+    def test_message_entry_form_submission(self):
+        """Can you add a message?"""
 
         # Since we need to change the session to mimic logging in,
         # we need to use the changing-session trick:
@@ -62,7 +81,7 @@ class MessageViewTestCase(TestCase):
                 sess[CURR_USER_KEY] = self.testuser.id
 
             # Now, that session setting is saved, so we can have
-            # the rest of ours test
+            # the rest of our test
 
             resp = c.post("/messages/new", data={"text": "Hello"})
 
@@ -71,3 +90,75 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+    def test_message_view(self):
+        """Does this route present a message details when user is logged in?"""
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            m = Message(text="test text", user_id=self.testuser.id)
+            db.session.add(m)
+            db.session.commit()
+
+            resp = c.get(f"/messages/{m.id}")
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn('test text', html)
+
+
+    def test_message_delete(self):
+        """Does this route delete a message details when user is logged in?"""
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            m = Message(text="test text", user_id=self.testuser.id)
+            db.session.add(m)
+            db.session.commit()
+
+            m1 = Message.query.all()
+
+            self.assertEqual(len(m1), 1)
+
+            resp = c.post(f"/messages/{m.id}/delete")
+
+            messages = Message.query.all()
+
+            self.assertEqual(resp.status_code, 302)
+            self.assertEqual(len(messages), 0)
+    
+    def test_message_delete_not_logged_in(self):
+        """Does this route redirect when a user is not logged in?"""
+
+        m = Message(text="test text", user_id=self.testuser.id)
+        db.session.add(m)
+        db.session.commit()
+
+        with self.client as c:
+            resp = c.post(f'/messages/{m.id}/delete', follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
+    
+    def test_message_delete_different_user(self):
+        """Can a user delete another user's messages?"""
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            u = User(email="test2@test.com", username="testuser2", password="HASHED_PASSWORD2")
+            db.session.add(u)
+            db.session.commit()  
+
+            m = Message(text="test text", user_id=(u.id))
+            db.session.add(m)
+            db.session.commit()
+
+            resp = c.post(f'/messages/{m.id}/delete', follow_redirects=True)
+            html = resp.get_data(as_text=True)
+
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized.", html)
